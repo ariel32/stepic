@@ -32,7 +32,7 @@ library("corrplot")
 d %>% mutate(time = ordered(format(time, format = "%b"), month.abb), text) %>%
   group_by(time,text) %>% summarise(Total = n()) %>% reshape2::acast(time~text) -> d4
 
-M<-cor(d1, method = "sp")
+M<-cor(d4, method = "sp")
 cor.mtest <- function(mat, ...) {
   mat <- as.matrix(mat)
   n <- ncol(mat)
@@ -70,3 +70,9 @@ ggplot(d5, aes(x = time,y=Total)) +
   geom_area(aes(group = text, fill = text),colour = "black") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ###############################################################################
+library("factoextra")
+d %>% mutate(time = format(time, format = "%d"), text) %>%
+  group_by(time,text) %>% summarise(Total = n()) %>% reshape2::acast(time~text) %>% na.omit -> d6
+
+res.pca <- prcomp(d6,  scale = TRUE)
+fviz_pca_var(res.pca)
