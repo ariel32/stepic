@@ -1,30 +1,120 @@
 ---
 title: "GoogleHistoryQuest"
 author: "Ariel"
-date: '18 сентября 2016 г '
+date: '21 сентября 2016 г '
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, echo=FALSE, results='hide', message=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(dplyr); library(ggplot2)
+Sys.setlocale("LC_ALL","English")
+
+d = read.csv("stepic.data.set.csv", sep = ";")
+d$time <- as.Date(d$time)
 ```
 
-## R Markdown
+## Цель исследования
+Меня всегда интриговала концепция исследования себя, своей психики и способоностей. Неудивительно, что в конечном итоге я узнал о движении Quantified Self. Но всякие трекеры и программы для учета времени, пусть и предоставляют весьма точную информацию, но... скучны, быть может? Нет, конечно, знать сколько я сделал шагов это очень, очень здорово! Только тухло. Значит, нужно искать что-то иное. Например, можно поставить ManicTime и отслеживать всю свою жизнедеятельность за компьютером: фильмы, программирование, игры, книги, посещенные сайты. Ну, и на рабочий компьютер можно приложение поставить. И на ноут. И на телефон что-то придется подыскать. И на планш... ай, к черту!
+У меня же есть мой милый и любимый Google-аккаунт, средоточие информации обо мне, моя персональная точка G! Вот его и будем анализировать. Вернее, мои поисковые запросы.
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+## Материалы и методы
+Найти саму историю достаточно [просто](http://just.google.it). Архив с поисковыми запросами в формате JSON попадает на GoogleDrive, оттуда его можно спокойно утащить к себе и радоваться. Собираем запросы в data.frame, определяемся с категориями поисковых запросов, помечаем их особым образом, саму поисковую фразу удаляем. Серьезно, это интимнее фотографий с медиума. Обработанный таким образом data.frame должен валяться где-то рядом в формате CSV.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+Всего я буду анализировать 4 категории запросов:
 
-```{r cars}
-summary(cars)
+* data - все так или иначе связанное с R - "r", "ggplot2", "data"
+* films - обычное таймфажество, используемое как фон для принятия пищи или отхождения ко [сну](https://ru.wikipedia.org/wiki/Amazon_Women_in_the_Mood) - "фильм","видео", "сезон", "series"
+* pr0n - эээ... _паблик рилейшнc зиро ньюс?_ Да, верно! Самые свежие новости, новости **нулевого** дня о PR-индустрии!
+* wh40k -  `In the grim darkness of far future there is only war!` Да, да, Warhammer 40000. Он самый.
+
+Вот такое вот summary у нашего датасета:
+```{r echo=FALSE, fig.align='center'}
+summary(d)
+```
+Из библиотек понадобится лишь **dplyr**, **ggplot2**, **corrplot** и **factoextra**.
+
+## Результаты и выводы
+Тэкс. Что у нас тут?
+
+```{r echo=FALSE, results='hide', message=FALSE, fig.align='center'}
+d %>% mutate(time = ordered(format(time, format = "%b"), month.abb), text) %>%
+  group_by(time,text) %>% summarise(Total = n()) -> d1
+ggplot(d1, aes(x = time,y=Total)) + geom_area(aes(group = text, fill = text),colour = "black")
+```
+Хм. Наверное, не самые хорошие новости с точки зрения среднестатистического человека. Анализом данных я интересуюсь значительно больше, чем сериалами, pr0n'ом и - Святая Терра! - даже Вархаммером. Пики приходятся на март, июнь и октябрь. Март и октябрь - это время подготовки промежуточных отчетов по научным проектам, а вот июнь - йиху! - начало отпуска, когда я могу наконец-то заниматься тем, чем хочу сам!
+Не смотря на любопытный вид geom_area, все ж таки мне кажется не впихнуть преславутый ящик с усами было бы опрометчиво (иначе какая это научная статья?):
+```{r echo=FALSE, results='hide', message=FALSE, fig.align='center'}
+d %>% mutate(month = ordered(format(time, format = "%b"), month.abb),year = format(time,format="%Y"), text) %>%
+  group_by(month,year,text) %>% summarise(Total = n()) -> d3
+ggplot(d3, aes(month, Total,colour = text)) + geom_boxplot() +
+  stat_summary(fun.y=median, geom="line", aes(group=1))  + 
+  stat_summary(fun.y=median, geom="point") +
+  facet_grid(.~text) + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+Ужас на самом деле - информативности никакой, да и читается наиотвратно. Но, что ж поделать - не пирожковые эти ваши диаграммы, и то хорошо.
+Попробуем что-нибудь прокоррелировать. Так как это почти настоящая научная статья, проверять на нормальность конечно же не будем, выберем метод, который дает наиболее подходящие нам результаты и, разумеется, опустим любые отсылки к р-значениям[^1].
+
+```{r echo=FALSE, results='hide', message=FALSE, fig.align='center',fig.height = 7}
+library(corrplot)
+d %>% mutate(time = ordered(format(time, format = "%b"), month.abb), text) %>%
+  group_by(time,text) %>% summarise(Total = n()) %>% reshape2::acast(time~text) -> d4
+
+M<-cor(d4, method = "sp")
+cor.mtest <- function(mat, ...) {
+  mat <- as.matrix(mat)
+  n <- ncol(mat)
+  p.mat<- matrix(NA, n, n)
+  diag(p.mat) <- 0
+  for (i in 1:(n - 1)) {
+    for (j in (i + 1):n) {
+      tmp <- cor.test(mat[, i], mat[, j], ...)
+      p.mat[i, j] <- p.mat[j, i] <- tmp$p.value
+    }
+  }
+  colnames(p.mat) <- rownames(p.mat) <- colnames(mat)
+  p.mat
+}
+
+# matrix of the p-value of the correlation
+p.mat <- cor.mtest(d4)
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(M, method="color", col=col(200),  
+         type="upper", order="hclust", 
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black",# tl.srt=45, #Text label color and rotation
+         # Combine with significance
+         p.mat = p.mat, sig.level = 1, insig = "blank", 
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE 
+)
+```
+Дааа, грусть-печаль, мой интерес к данным никак не связан с Богом-Императором - коэффициент корреляции Спирмена составил всего `r round(cor.test(d4[,1],d4[,4],method = "sp")$estimate,4)`. Зато под очередной голливудский шлак я, оказывается, вполне себе горазд и поанализировать что-нибудь.
+Исключительно лулзов ради посмотрим на еще один эриа-плот, на сей раз по дням:
+```{r echo=FALSE, results='hide', message=FALSE, fig.align='center'}
+d %>% mutate(time = ordered(format(time, format = "%A"),
+                            c("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday")), text) %>%
+  group_by(time,text) %>% summarise(Total = n()) -> d5
+ggplot(d5, aes(x = time,y=Total)) +
+  geom_area(aes(group = text, fill = text),colour = "black") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+Да-да, data-запросы тухнут к выходным, на которых, что не удивительно, идет в гору pr0n.
+Ну, и напоследок небольшой пример того, как неряшливый корреляционный анализ может быть проиллюстрирован biplot'ом:
+```{r echo=FALSE, results='hide', message=FALSE, fig.align='center'}
+library(factoextra)
+d %>% mutate(time = format(time, format = "%d"), text) %>%
+  group_by(time,text) %>% summarise(Total = n()) %>% reshape2::acast(time~text) %>% na.omit -> d6
+
+res.pca <- prcomp(d6,  scale = TRUE)
+fviz_pca_var(res.pca)
 ```
 
-## Including Plots
+## Заключение
+Всем спасибо за внимание! Искренне прошу прощения, если обидел кого-либо или потратил зря драгоценное время. Просто мне показалось, что немножко абсурда не помешает :)
 
-You can also embed plots, for example:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+ [^1]: Да-да, это русская буква "эр", а не какое-то это ваше заграничное "пи"!
